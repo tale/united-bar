@@ -1,14 +1,17 @@
 import Foundation
+import OSLog
 import Observation
 
 @MainActor
 @Observable
 final class FlightStore {
   private(set) var info: FlightInfo?
+  private(set) var aircraftImageData: Data?
   private(set) var errorText: String?
   private(set) var isLoading = false
   private(set) var fetchedDatetime: Date?
   private var pollTask: Task<Void, Never>?
+  private var imagedEquipmentCode: String?
 
   private static let endpoint = URL(
     string: "https://www.unitedwifi.com/api/flight/portal/v1/flifo")!
@@ -30,13 +33,60 @@ final class FlightStore {
     defer { isLoading = false }
 
     do {
-      info = try await fetchInfo()
+      let fetched = try await fetchInfo()
+      info = fetched
       fetchedDatetime = Date()
       errorText = nil
+
+      let remaining = fetched.timeRemaining.formatted(
+        .units(allowed: [.hours, .minutes], width: .narrow))
+
+      Logger.flight.info(
+        """
+        \(fetched.callSign, privacy: .public) \
+        \(fetched.origin.airportCode, privacy: .public)→\
+        \(fetched.destination.airportCode, privacy: .public) \
+        \(fetched.equipmentCode, privacy: .public) \
+        \(remaining, privacy: .public) remaining
+        """)
+
+      await loadAircraftImage(for: fetched)
     } catch {
       errorText =
         (error as? DecodingError).map { "Unexpected payload: \($0)" }
         ?? error.localizedDescription
+
+      Logger.flight.error(
+        "flifo failed: \(error.localizedDescription, privacy: .public)")
+    }
+  }
+
+  private func loadAircraftImage(for info: FlightInfo) async {
+    guard imagedEquipmentCode != info.equipmentCode else { return }
+    guard
+      let url = await AircraftManifest.shared.url(
+        equipmentCode: info.equipmentCode)
+    else {
+      Logger.flight.error(
+        "no render for equipment \(info.equipmentCode, privacy: .public)")
+      return
+    }
+
+    do {
+      let (data, _) = try await URLSession.shared.data(from: url)
+      aircraftImageData = data
+      imagedEquipmentCode = info.equipmentCode
+      Logger.flight.info(
+        """
+        render \(url.lastPathComponent, privacy: .public) \
+        \(data.count, privacy: .public) bytes
+        """)
+    } catch {
+      Logger.flight.error(
+        """
+        render \(url.lastPathComponent, privacy: .public) failed: \
+        \(error.localizedDescription, privacy: .public)
+        """)
     }
   }
 

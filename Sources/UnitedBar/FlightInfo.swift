@@ -55,7 +55,7 @@ struct FlightInfo {
 }
 
 extension FlightInfo {
-  var callSign: String { airlineCode + flightNumber }
+  var callSign: String { "\(airlineCode) \(flightNumber)" }
 
   var progress: Double {
     let total = Double(flightDuration.components.seconds)
@@ -63,6 +63,11 @@ extension FlightInfo {
 
     let flown = total - Double(timeRemaining.components.seconds)
     return min(max(flown / total, 0), 1)
+  }
+
+  // United gives status as "<Phase> - <Description>" so we can probably split.
+  var statusPhase: String {
+    status.components(separatedBy: " - ").first ?? status
   }
 
   var arrivalDelay: Duration {
