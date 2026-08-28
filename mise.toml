@@ -27,3 +27,7 @@ run = "rm -rf build"
 [tasks.clean-all]
 description = "Also drop .build; the next build then costs ~30s"
 run = "rm -rf build .build"
+
+[tasks.logs]
+description = "Stream the app's log output; Ctrl-C stops it"
+run = "/usr/bin/log stream --level info --style compact --predicate 'subsystem == \"me.tale.UnitedBar\"'"
