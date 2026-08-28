@@ -21,5 +21,9 @@ description = "Format the sources in place"
 run = "swift format --in-place --recursive Sources"
 
 [tasks.clean]
-description = "Remove build output"
-run = "rm -rf .build build"
+description = "Remove the app bundle"
+run = "rm -rf build"
+
+[tasks.clean-all]
+description = "Also drop .build; the next build then costs ~30s"
+run = "rm -rf build .build"
