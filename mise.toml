@@ -1,0 +1,25 @@
+[tasks.dev]
+description = "Build and run in this terminal; Ctrl-C stops it"
+run = "swift build && exec .build/debug/UnitedBar"
+
+[tasks.build]
+description = "Compile the release executable"
+run = "swift build -c release"
+
+[tasks.bundle]
+description = "Assemble build/UnitedBar.app"
+depends = ["build"]
+run = [
+  "mkdir -p build/UnitedBar.app/Contents/MacOS",
+  "cp .build/release/UnitedBar build/UnitedBar.app/Contents/MacOS/UnitedBar",
+  "cp Resources/Info.plist build/UnitedBar.app/Contents/Info.plist",
+  "codesign --force --sign - build/UnitedBar.app",
+]
+
+[tasks.fmt]
+description = "Format the sources in place"
+run = "swift format --in-place --recursive Sources"
+
+[tasks.clean]
+description = "Remove build output"
+run = "rm -rf .build build"
