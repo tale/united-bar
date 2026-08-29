@@ -70,6 +70,19 @@ extension FlightInfo {
     status.components(separatedBy: " - ").first ?? status
   }
 
+  var windBearing: Double? {
+    let points = [
+      "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+      "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+    ]
+
+    guard let point = points.firstIndex(of: windDirection.uppercased()) else {
+      return nil
+    }
+
+    return Double(point) * 22.5
+  }
+
   var arrivalDelay: Duration {
     .seconds(
       destination.estimated.date.timeIntervalSince(
