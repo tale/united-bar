@@ -95,7 +95,26 @@ final class FlightStore {
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.cachePolicy = .reloadIgnoringLocalCacheData
 
-    let (data, _) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await URLSession.shared.data(for: request)
+
+    // On the ground the endpoint redirects to United's in-flight marketing page
+    // which returns a 200 but with HTML, so we need to treat it as an error
+    guard let http = response as? HTTPURLResponse,
+      http.statusCode == 200,
+      let contentType = http.value(forHTTPHeaderField: "Content-Type"),
+      contentType.localizedCaseInsensitiveContains("json")
+    else {
+      throw FetchError.unavailable
+    }
+
     return try JSONDecoder().decode(FlightInfo.self, from: data)
+  }
+
+  enum FetchError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+      "Flight data is unavailable. Connect to the aircraft network."
+    }
   }
 }

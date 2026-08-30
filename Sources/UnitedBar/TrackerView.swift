@@ -31,7 +31,7 @@ struct TrackerView: View {
       footer
     }
     .padding(16)
-    .frame(width: 440)
+    .frame(width: store.info == nil ? 320 : 440)
   }
 
   @ViewBuilder
@@ -39,22 +39,40 @@ struct TrackerView: View {
     if let info = store.info {
       FlightPanel(info: info, aircraftImageData: store.aircraftImageData)
     } else if let errorText = store.errorText {
-      VStack(alignment: .leading, spacing: 6) {
-        Label(
-          "No flight data",
-          systemImage: "antenna.radiowaves.left.and.right.slash"
-        )
-        .font(.headline)
-        Text(errorText)
-          .font(.callout)
+      placeholder {
+        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+          .font(.system(size: 26, weight: .medium))
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(.secondary)
+
+        Text(verbatim: "No flight data")
+          .font(.system(size: 15, weight: .semibold, design: .rounded))
+
+        Text(verbatim: errorText)
+          .font(.system(size: 12))
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    } else {
+      placeholder {
+        ProgressView().controlSize(.small)
+
+        Text(verbatim: "Looking for your flight")
+          .font(.system(size: 12))
           .foregroundStyle(.secondary)
       }
-      .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
-    } else {
-      ProgressView()
-        .controlSize(.small)
-        .frame(maxWidth: .infinity, minHeight: 120)
     }
+  }
+
+  private func placeholder(
+    @ViewBuilder _ body: () -> some View
+  ) -> some View {
+    VStack(spacing: 8) {
+      body()
+    }
+    .frame(maxWidth: .infinity, minHeight: 132)
+    .padding(.horizontal, 18)
   }
 
   private var footer: some View {
