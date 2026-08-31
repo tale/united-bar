@@ -12,6 +12,16 @@ Clicking it opens the panel:
 
 ![The United Bar panel, tracking UA 1981 from LAX to EWR](docs/screenshot.png)
 
+## Install
+
+```sh
+brew install --cask tale/tap/united-bar
+```
+
+Apple Silicon, macOS 14 or later. Builds are signed and notarized, so there is
+no Gatekeeper prompt. Every push to `main` publishes a new one and `brew
+upgrade` picks it up.
+
 ## How it works
 
 When you connect to in-flight Wi-Fi, you're able to go to `unitedwifi.com` and
