@@ -17,11 +17,11 @@ struct FlightInfo {
   let flightDuration: Duration
   let timeRemaining: Duration
 
-  let airSpeed: Measurement<UnitSpeed>
-  let groundSpeed: Measurement<UnitSpeed>
-  let altitude: Measurement<UnitLength>
-  let airTemperature: Measurement<UnitTemperature>
-  let windSpeed: Measurement<UnitSpeed>
+  let airSpeed: Measurement<UnitSpeed>?
+  let groundSpeed: Measurement<UnitSpeed>?
+  let altitude: Measurement<UnitLength>?
+  let airTemperature: Measurement<UnitTemperature>?
+  let windSpeed: Measurement<UnitSpeed>?
   let windDirection: String
 
   struct Endpoint {
@@ -129,11 +129,11 @@ extension FlightInfo: Decodable {
     flightDuration = .seconds(flifo.flightDurationMinutes * 60)
     timeRemaining = .seconds(flifo.timeRemainingToDestination * 60)
 
-    airSpeed = try measurement(flifo.airSpeedMPH, .milesPerHour)
-    groundSpeed = try measurement(flifo.groundSpeedMPH, .milesPerHour)
-    altitude = try measurement(flifo.altitudeFt, .feet)
-    airTemperature = try measurement(flifo.airTemperatureC, .celsius)
-    windSpeed = try measurement(flifo.windSpeedMPH, .milesPerHour)
+    airSpeed = measurement(flifo.airSpeedMPH, .milesPerHour)
+    groundSpeed = measurement(flifo.groundSpeedMPH, .milesPerHour)
+    altitude = measurement(flifo.altitudeFt, .feet)
+    airTemperature = measurement(flifo.airTemperatureC, .celsius)
+    windSpeed = measurement(flifo.windSpeedMPH, .milesPerHour)
     windDirection = flifo.windDirection
   }
 }
@@ -214,9 +214,9 @@ extension TimeZone {
 
 private func measurement<UnitType: Dimension>(
   _ text: String, _ unit: UnitType
-) throws -> Measurement<UnitType> {
+) -> Measurement<UnitType>? {
   guard let value = Double(text) else {
-    throw FlightInfo.DecodeError.notANumber(text)
+    return nil
   }
 
   return Measurement(value: value, unit: unit)

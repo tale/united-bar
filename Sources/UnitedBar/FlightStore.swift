@@ -107,14 +107,23 @@ final class FlightStore {
       throw FetchError.unavailable
     }
 
-    return try JSONDecoder().decode(FlightInfo.self, from: data)
+    let decoded = try JSONDecoder().decode(FlightInfo.self, from: data)
+    if decoded.flightNumber.isEmpty {
+        throw FetchError.illegalData
+    }
+
+    return decoded
   }
 
   enum FetchError: LocalizedError {
     case unavailable
+    case illegalData
 
     var errorDescription: String? {
-      "Flight data is unavailable. Connect to the aircraft network."
+      switch self {
+      case .unavailable: "Flight data is unavailable. Connect to Unitedwifi.com"
+      case .illegalData: "Invalid flight data recieved, this aircraft may be experiencing connectivity issues."
+      }
     }
   }
 }

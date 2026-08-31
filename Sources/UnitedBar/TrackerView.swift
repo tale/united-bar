@@ -328,10 +328,10 @@ private struct FlightPanel: View {
     info.arrivalDelay > .zero ? .orange : .accentColor
   }
 
-  private var altitude: Measurement<UnitLength> {
+  private var altitude: Measurement<UnitLength>? {
     Locale.current.measurementSystem == .metric
-      ? info.altitude.converted(to: .meters)
-      : info.altitude.converted(to: .feet)
+      ? info.altitude?.converted(to: .meters)
+      : info.altitude?.converted(to: .feet)
   }
 
   private var departure: FlightInfo.Instant {
@@ -354,9 +354,13 @@ extension FlightInfo.Instant {
 }
 
 private func rounded<UnitType: Dimension>(
-  _ value: Measurement<UnitType>, usage: MeasurementFormatUnitUsage<UnitType>
+  _ value: Measurement<UnitType>?, usage: MeasurementFormatUnitUsage<UnitType>
 ) -> String {
-  value.formatted(
+    guard let value else {
+        return "N/A"
+    }
+
+  return value.formatted(
     .measurement(
       width: .abbreviated, usage: usage,
       numberFormatStyle: .number.precision(.fractionLength(0))))
