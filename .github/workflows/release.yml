@@ -1,0 +1,217 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event_name == 'push' && 'tip' || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install mise
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      - name: Configure artifact
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          short="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version="${short}-tip-$(git rev-parse --short HEAD)"
+            slug=tip
+          else
+            version="${RELEASE_TAG#v}"
+            slug="$RELEASE_TAG"
+          fi
+
+          {
+            echo "APP_PATH=$GITHUB_WORKSPACE/build/UnitedBar.app"
+            echo "ARTIFACT_NAME=united-bar-${slug}-aarch64-macos.zip"
+            echo "ARTIFACT_PATH=$RUNNER_TEMP/united-bar-${slug}-aarch64-macos.zip"
+            echo "CASK_VERSION=$version"
+          } >> "$GITHUB_ENV"
+
+      - name: Build
+        run: mise run bundle
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.PROD_MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.PROD_MACOS_CERTIFICATE_PWD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.PROD_MACOS_CI_KEYCHAIN_PWD }}
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/signing.keychain-db"
+
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -k "$keychain_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$MACOS_KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+
+          security list-keychains -d user -s "$keychain_path" \
+            $(security list-keychains -d user | sed 's/[",]//g' | xargs)
+          security default-keychain -d user -s "$keychain_path"
+          security find-identity -v -p codesigning | grep -q "Developer ID Application"
+
+      - name: Sign app bundle
+        env:
+          MACOS_CERTIFICATE_NAME: ${{ secrets.PROD_MACOS_CERTIFICATE_NAME }}
+        run: |
+          set -euo pipefail
+          codesign \
+            --force \
+            --sign "$MACOS_CERTIFICATE_NAME" \
+            --options runtime \
+            --timestamp \
+            "$APP_PATH"
+
+      - name: Verify signature
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          test "$(codesign -dvv "$APP_PATH" 2>&1 | sed -n 's/^Identifier=//p')" = \
+            "me.tale.UnitedBar"
+
+          codesign -dvv "$APP_PATH/Contents/MacOS/UnitedBar" 2>&1 \
+            | grep -q '^Authority=Developer ID Application' || {
+              echo "executable is not signed with Developer ID" >&2
+              exit 1
+            }
+
+      - name: Notarize and staple
+        env:
+          APPLE_NOTARIZATION_ISSUER: ${{ secrets.APPLE_NOTARIZATION_ISSUER }}
+          APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+        run: |
+          set -euo pipefail
+          notarization_key_path="$RUNNER_TEMP/notarization-key.p8"
+          printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notarization_key_path"
+
+          ditto -c -k --keepParent "$APP_PATH" "$ARTIFACT_PATH"
+          submission="$(xcrun notarytool submit "$ARTIFACT_PATH" \
+            --key "$notarization_key_path" \
+            --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+            --issuer "$APPLE_NOTARIZATION_ISSUER" \
+            --wait \
+            --timeout 30m \
+            --output-format json)"
+          echo "$submission"
+
+          if [[ "$(jq -r .status <<<"$submission")" != "Accepted" ]]; then
+            xcrun notarytool log "$(jq -r .id <<<"$submission")" \
+              --key "$notarization_key_path" \
+              --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+              --issuer "$APPLE_NOTARIZATION_ISSUER"
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP_PATH"
+          rm -f "$ARTIFACT_PATH"
+          ditto -c -k --keepParent "$APP_PATH" "$ARTIFACT_PATH"
+
+      - name: Verify Gatekeeper acceptance
+        run: |
+          set -euo pipefail
+          xcrun stapler validate "$APP_PATH"
+          spctl --assess --type exec --verbose=4 "$APP_PATH"
+
+      - name: Generate checksum
+        run: |
+          set -euo pipefail
+          artifact_sha256="$(shasum -a 256 "$ARTIFACT_PATH" | awk '{print $1}')"
+          printf '%s  %s\n' "$artifact_sha256" "$ARTIFACT_NAME" > "$ARTIFACT_PATH.sha256"
+          echo "ARTIFACT_SHA256=$artifact_sha256" >> "$GITHUB_ENV"
+
+      - name: Move tip tag
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa tip -m "Latest Continuous Release" "$GITHUB_SHA"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push --force origin tip
+
+      - name: Upload app to tip release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view tip >/dev/null 2>&1 || \
+            gh release create tip \
+              --title 'United Bar tip' \
+              --notes 'Latest continuous build from main.' \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          gh release edit tip \
+            --title 'United Bar tip' \
+            --notes 'Latest continuous build from main.' \
+            --prerelease \
+            --target "$GITHUB_SHA"
+          gh release upload tip "$ARTIFACT_PATH" "$ARTIFACT_PATH.sha256" --clobber
+
+      - name: Upload app to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" "$ARTIFACT_PATH" "$ARTIFACT_PATH.sha256"
+
+      - name: Mint a tap token
+        if: github.event_name == 'push'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: tap
+        with:
+          client-id: ${{ vars.TALE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.TALE_APP_PRIVATE_KEY }}
+          owner: tale
+          repositories: homebrew-tap
+
+      - name: Dispatch to homebrew-tap
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ steps.tap.outputs.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/tale/homebrew-tap/dispatches \
+            -f event_type=united-bar \
+            -f "client_payload[version]=$CASK_VERSION" \
+            -f "client_payload[artifact]=$ARTIFACT_NAME" \
+            -f "client_payload[sha256]=$ARTIFACT_SHA256"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f \
+            "$RUNNER_TEMP/developer-id.p12" \
+            "$RUNNER_TEMP/notarization-key.p8"
