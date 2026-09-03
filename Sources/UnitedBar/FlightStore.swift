@@ -12,11 +12,21 @@ final class FlightStore {
   private(set) var fetchedDatetime: Date?
   private var pollTask: Task<Void, Never>?
   private var imagedEquipmentCode: String?
+  private var failureCount = 0
 
   private static let endpoint = URL(
     string: "https://www.unitedwifi.com/api/flight/portal/v1/flifo")!
   private static let cruiseInterval = Duration.seconds(60)
   private static let landingInterval = Duration.seconds(5)
+  private static let retryInterval = Duration.seconds(2)
+
+  private static let session: URLSession = {
+    let config = URLSessionConfiguration.ephemeral
+    config.waitsForConnectivity = true
+    config.timeoutIntervalForResource = 30
+    config.requestCachePolicy = .reloadIgnoringLocalCacheData
+    return URLSession(configuration: config)
+  }()
 
   func startPolling() {
     guard pollTask == nil else { return }
@@ -33,7 +43,12 @@ final class FlightStore {
   }
 
   private var pollInterval: Duration {
-    guard errorText == nil, info?.isLanding == true else {
+    guard failureCount == 0 else {
+      return min(
+        Self.cruiseInterval, Self.retryInterval * (1 << (failureCount - 1)))
+    }
+
+    guard info?.isLanding == true else {
       return Self.cruiseInterval
     }
 
@@ -49,6 +64,7 @@ final class FlightStore {
       info = fetched
       fetchedDatetime = Date()
       errorText = nil
+      failureCount = 0
 
       let remaining =
         fetched.timeRemaining?.formatted(
@@ -65,6 +81,7 @@ final class FlightStore {
 
       await loadAircraftImage(for: fetched)
     } catch {
+      failureCount = min(failureCount + 1, 6)
       errorText =
         (error as? DecodingError).map { "Unexpected payload: \($0)" }
         ?? error.localizedDescription
@@ -109,7 +126,7 @@ final class FlightStore {
   }
 
   private static func render(from url: URL) async throws -> Data {
-    let (data, response) = try await URLSession.shared.data(from: url)
+    let (data, response) = try await session.data(from: url)
     guard let http = response as? HTTPURLResponse,
       http.statusCode == 200,
       let contentType = http.value(forHTTPHeaderField: "Content-Type"),
@@ -124,9 +141,8 @@ final class FlightStore {
   private func fetchInfo() async throws -> FlightInfo {
     var request = URLRequest(url: Self.endpoint)
     request.setValue("application/json", forHTTPHeaderField: "Accept")
-    request.cachePolicy = .reloadIgnoringLocalCacheData
 
-    let (data, response) = try await URLSession.shared.data(for: request)
+    let (data, response) = try await Self.session.data(for: request)
 
     // On the ground the endpoint redirects to United's in-flight marketing page
     // which returns a 200 but with HTML, so we need to treat it as an error
