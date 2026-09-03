@@ -273,10 +273,9 @@ private struct FlightPanel: View {
       Grid(horizontalSpacing: 14, verticalSpacing: 11) {
         GridRow {
           tile("Altitude", rounded(altitude, usage: .asProvided))
-          tile("Ground", rounded(info.groundSpeed, usage: .general))
+          tile(speed.label, rounded(speed.value, usage: .general))
         }
         GridRow {
-          tile("Air speed", rounded(info.airSpeed, usage: .general))
           tile("Outside", rounded(info.airTemperature, usage: .general))
         }
       }
@@ -358,6 +357,15 @@ private struct FlightPanel: View {
     [info.aircraftModel, info.tailNumber]
       .filter { !$0.isEmpty }
       .joined(separator: " · ")
+  }
+
+  // Apparently this can be an either/or scenario
+  private var speed: (label: String, value: Measurement<UnitSpeed>?) {
+    guard let airSpeed = info.airSpeed, airSpeed.value > 0 else {
+      return ("Ground", info.groundSpeed)
+    }
+
+    return ("Air speed", airSpeed)
   }
 
   private var altitude: Measurement<UnitLength>? {
