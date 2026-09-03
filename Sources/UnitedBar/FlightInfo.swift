@@ -75,6 +75,13 @@ extension FlightInfo {
     return Double(point) * 22.5
   }
 
+  // 15 minutes to determine we are landing is probably fine
+  private static let landingWindow = Duration.seconds(15 * 60)
+  var isLanding: Bool {
+    guard destination.actual == nil, let timeRemaining else { return false }
+    return timeRemaining > .zero && timeRemaining <= Self.landingWindow
+  }
+
   var arrivalDelay: Duration? {
     guard let estimated = destination.estimated,
       let scheduled = destination.scheduled
@@ -120,8 +127,8 @@ extension FlightInfo: Decodable {
       estimated: Instant(flifo.estimatedArrivalTimeLocal),
       actual: Instant(flifo.actualArrivalTimeLocal))
 
-    flightDuration = minutes(flifo.flightDurationMinutes)
-    timeRemaining = minutes(flifo.timeRemainingToDestination)
+    flightDuration = flifo.flightDurationMinutes?.duration
+    timeRemaining = flifo.timeRemainingToDestination?.duration
 
     airSpeed = measurement(flifo.airSpeedMPH, .milesPerHour)
     groundSpeed = measurement(flifo.groundSpeedMPH, .milesPerHour)
@@ -152,7 +159,7 @@ private struct Flifo: Decodable {
   let equipmentCode: String?
   let estimatedArrivalTimeLocal: String?
   let estimatedDepartureTimeLocal: String?
-  let flightDurationMinutes: Int?
+  let flightDurationMinutes: Minutes?
   let flightNumber: String?
   let flightStatus: String?
   let groundSpeedMPH: String?
@@ -164,7 +171,7 @@ private struct Flifo: Decodable {
   let scheduledArrivalTimeLocal: String?
   let scheduledDepartureTimeLocal: String?
   let tailNumber: String?
-  let timeRemainingToDestination: Int?
+  let timeRemainingToDestination: Minutes?
   let windDirection: String?
   let windSpeedMPH: String?
 }
@@ -203,9 +210,20 @@ extension TimeZone {
   }
 }
 
-private func minutes(_ value: Int?) -> Duration? {
-  guard let value else { return nil }
-  return .seconds(value * 60)
+private struct Minutes: Decodable {
+  let duration: Duration?
+
+  init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer()
+    if let number = try? value.decode(Int.self) {
+      duration = .seconds(number * 60)
+      return
+    }
+
+    duration = (try? value.decode(String.self))
+      .flatMap(Int.init)
+      .map { .seconds($0 * 60) }
+  }
 }
 
 private func measurement<UnitType: Dimension>(

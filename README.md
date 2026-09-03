@@ -26,7 +26,8 @@ upgrade` picks it up.
 
 When you connect to in-flight Wi-Fi, you're able to go to `unitedwifi.com` and
 view live flight information. The data runs on a machine in the plane which we
-can poll once a minute:
+poll once a minute, and every few seconds once you're inside 15 minutes of
+landing and the countdown starts moving:
 
 ```
 https://www.unitedwifi.com/api/flight/portal/v1/flifo

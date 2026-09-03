@@ -15,7 +15,8 @@ final class FlightStore {
 
   private static let endpoint = URL(
     string: "https://www.unitedwifi.com/api/flight/portal/v1/flifo")!
-  private static let pollInterval = Duration.seconds(60)
+  private static let cruiseInterval = Duration.seconds(60)
+  private static let landingInterval = Duration.seconds(5)
 
   func startPolling() {
     guard pollTask == nil else { return }
@@ -23,9 +24,20 @@ final class FlightStore {
     pollTask = Task { [weak self] in
       while !Task.isCancelled {
         await self?.refresh()
-        try? await Task.sleep(for: FlightStore.pollInterval)
+
+        guard let interval = self?.pollInterval else { return }
+
+        try? await Task.sleep(for: interval)
       }
     }
+  }
+
+  private var pollInterval: Duration {
+    guard errorText == nil, info?.isLanding == true else {
+      return Self.cruiseInterval
+    }
+
+    return Self.landingInterval
   }
 
   func refresh() async {
