@@ -38,8 +38,9 @@ final class FlightStore {
       fetchedDatetime = Date()
       errorText = nil
 
-      let remaining = fetched.timeRemaining.formatted(
-        .units(allowed: [.hours, .minutes], width: .narrow))
+      let remaining =
+        fetched.timeRemaining?.formatted(
+          .units(allowed: [.hours, .minutes], width: .narrow)) ?? "unknown"
 
       Logger.flight.info(
         """
@@ -63,31 +64,49 @@ final class FlightStore {
 
   private func loadAircraftImage(for info: FlightInfo) async {
     guard imagedEquipmentCode != info.equipmentCode else { return }
-    guard
-      let url = await AircraftManifest.shared.url(
-        equipmentCode: info.equipmentCode)
-    else {
+    let candidates = await AircraftManifest.shared.urls(
+      equipmentCode: info.equipmentCode)
+
+    guard !candidates.isEmpty else {
       Logger.flight.error(
         "no render for equipment \(info.equipmentCode, privacy: .public)")
       return
     }
 
-    do {
-      let (data, _) = try await URLSession.shared.data(from: url)
-      aircraftImageData = data
-      imagedEquipmentCode = info.equipmentCode
-      Logger.flight.info(
-        """
-        render \(url.lastPathComponent, privacy: .public) \
-        \(data.count, privacy: .public) bytes
-        """)
-    } catch {
-      Logger.flight.error(
-        """
-        render \(url.lastPathComponent, privacy: .public) failed: \
-        \(error.localizedDescription, privacy: .public)
-        """)
+    for url in candidates {
+      do {
+        let data = try await Self.render(from: url)
+        aircraftImageData = data
+        imagedEquipmentCode = info.equipmentCode
+
+        Logger.flight.info(
+          """
+          render \(url.lastPathComponent, privacy: .public) \
+          \(data.count, privacy: .public) bytes
+          """)
+
+        return
+      } catch {
+        Logger.flight.error(
+          """
+          render \(url.lastPathComponent, privacy: .public) failed: \
+          \(error.localizedDescription, privacy: .public)
+          """)
+      }
     }
+  }
+
+  private static func render(from url: URL) async throws -> Data {
+    let (data, response) = try await URLSession.shared.data(from: url)
+    guard let http = response as? HTTPURLResponse,
+      http.statusCode == 200,
+      let contentType = http.value(forHTTPHeaderField: "Content-Type"),
+      contentType.localizedCaseInsensitiveContains("image")
+    else {
+      throw FetchError.notAnImage
+    }
+
+    return data
   }
 
   private func fetchInfo() async throws -> FlightInfo {
@@ -109,7 +128,7 @@ final class FlightStore {
 
     let decoded = try JSONDecoder().decode(FlightInfo.self, from: data)
     if decoded.flightNumber.isEmpty {
-        throw FetchError.illegalData
+      throw FetchError.illegalData
     }
 
     return decoded
@@ -118,11 +137,14 @@ final class FlightStore {
   enum FetchError: LocalizedError {
     case unavailable
     case illegalData
+    case notAnImage
 
     var errorDescription: String? {
       switch self {
       case .unavailable: "Flight data is unavailable. Connect to Unitedwifi.com"
-      case .illegalData: "Invalid flight data recieved, this aircraft may be experiencing connectivity issues."
+      case .illegalData:
+        "Invalid flight data recieved, this aircraft may be experiencing connectivity issues."
+      case .notAnImage: "The portal served something that isn't an image"
       }
     }
   }

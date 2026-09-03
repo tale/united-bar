@@ -6,77 +6,127 @@ import OSLog
 // the unitedwifi.com website using CSS selectors matching the equipment code of
 // the aircraft.
 //
-// So we try and parse the CSS manifest and then fallback to a hard list.
+// Another thing to caveat is that different aircraft can run different versions
+// of the United in-flight software and can return different live versions of
+// the app which bundle CSS and stuff separately, etc.
 actor AircraftManifest {
   static let shared = AircraftManifest()
+  func urls(equipmentCode: String) async -> [URL] {
+    var urls: [URL] = []
 
-  func url(equipmentCode: String) async -> URL? {
-    let live = await parsed()
-
-    if let file = live[equipmentCode] {
-      return Self.imageBase.appending(path: file)
+    if let url = await parsed()[equipmentCode] {
+      urls.append(url)
+    } else {
+      Logger.manifest.notice(
+        "\(equipmentCode, privacy: .public) not in stylesheet, falling back")
     }
 
-    guard let file = Self.fallbackList[equipmentCode] else { return nil }
+    if let file = Self.fallbackList[equipmentCode] {
+      urls += Self.imageBases.map { $0.appending(path: file) }
+    }
 
-    Logger.manifest.notice(
-      "\(equipmentCode, privacy: .public) not in stylesheet, falling back")
-
-    return Self.imageBase.appending(path: file)
+    return urls
   }
 
-  static func parse(stylesheet css: String) -> [String: String] {
-    let code = /\.aircraft_([A-Za-z0-9]+)/
-    let file = /exteriors\/([A-Za-z0-9_.-]+\.png)/
-    var manifest: [String: String] = [:]
+  static func parse(stylesheet css: String, relativeTo base: URL) -> [String:
+    URL]
+  {
+    let code = /\._?aircraft_([A-Za-z0-9]+)/
+    let render = /url\(\s*["']?([^)"']+\.(?:png|jpe?g|webp))["']?\s*\)/
+    var manifest: [String: URL] = [:]
 
     for rule in css.split(separator: "}") {
       guard let brace = rule.firstIndex(of: "{"),
-        let render = rule[brace...].firstMatch(of: file)
+        let file = rule[brace...].firstMatch(of: render),
+        let url = URL(string: String(file.1), relativeTo: base)?.absoluteURL
       else { continue }
 
       for selector in rule[..<brace].matches(of: code) {
-        manifest[String(selector.1)] = String(render.1)
+        guard selector.1 != "default" else { continue }
+        manifest[String(selector.1)] = url
       }
     }
 
     return manifest
   }
 
-  private var live: [String: String]?
-  private func parsed() async -> [String: String] {
-    if let live { return live }
+  static func stylesheets(in html: String, relativeTo base: URL) -> [URL] {
+    let link = /<link[^>]+>/
+    let href = /href\s*=\s*["']([^"']+\.css)["']/
 
-    do {
-      let (data, _) = try await URLSession.shared.data(from: Self.stylesheet)
-      let manifest = Self.parse(
-        stylesheet: String(decoding: data, as: UTF8.self))
+    return html.matches(of: link)
+      .filter { $0.output.contains("stylesheet") }
+      .compactMap { $0.output.firstMatch(of: href) }
+      .compactMap { URL(string: String($0.1), relativeTo: base)?.absoluteURL }
+  }
+
+  private var live: [String: URL]?
+  private func parsed() async -> [String: URL] {
+    if let live { return live }
+    for sheet in await possibleCandidates() {
+      guard let css = await Self.text(from: sheet) else { continue }
+
+      let manifest = Self.parse(stylesheet: css, relativeTo: sheet)
+
+      guard !manifest.isEmpty else {
+        Logger.manifest.info(
+          "no aircraft rules in \(sheet.lastPathComponent, privacy: .public)")
+        continue
+      }
+
       live = manifest
 
       Logger.manifest.info(
         """
-        parsed \(manifest.count, privacy: .public) codes from stylesheet \
+        parsed \(manifest.count, privacy: .public) codes from \
+        \(sheet.lastPathComponent, privacy: .public) \
         (fallback table has \(Self.fallbackList.count, privacy: .public))
         """)
 
       return manifest
+    }
+
+    Logger.manifest.error("no stylesheet had aircraft rules, using fallback")
+    return [:]
+  }
+
+  private func possibleCandidates() async -> [URL] {
+    guard let html = await Self.text(from: Self.portal) else {
+      return [Self.legacyStylesheet]
+    }
+
+    return Self.stylesheets(in: html, relativeTo: Self.portal)
+      + [Self.legacyStylesheet]
+  }
+
+  private static func text(from url: URL) async -> String? {
+    do {
+      let (data, _) = try await URLSession.shared.data(from: url)
+      return String(decoding: data, as: UTF8.self)
     } catch {
       Logger.manifest.error(
         """
-        stylesheet unreachable, falling back to fallback table: \
+        \(url.lastPathComponent, privacy: .public) unreachable: \
         \(error.localizedDescription, privacy: .public)
         """)
 
-      return [:]
+      return nil
     }
   }
 
-  private static let stylesheet = URL(
+  private static let portal = URL(
+    string: "https://www.unitedwifi.com/content/home/index.html")!
+  private static let legacyStylesheet = URL(
     string: "https://www.unitedwifi.com/content/home/assets/css/v1/header.css")!
-  private static let imageBase = URL(
-    string: "https://www.unitedwifi.com/content/home/assets/img/v1/exteriors")!
 
-  // Pulled as of August 28, 2026
+  private static let imageBases = [
+    URL(
+      string:
+        "https://www.unitedwifi.com/content/home/assets/img/v1/exteriors")!,
+    URL(string: "https://www.unitedwifi.com/content/home/assets")!,
+  ]
+
+  // Updated August 28, 2026
   private static let fallbackList = [
     "19C": "A319_LF_a1.png",
     "19F": "A319_LF_a1.png",

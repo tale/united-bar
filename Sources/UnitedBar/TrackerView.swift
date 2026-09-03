@@ -16,9 +16,17 @@ struct MenuBarLabel: View {
   }
 
   private func summary(for info: FlightInfo) -> String {
-    let remaining = info.timeRemaining.formatted(hoursMinutes)
-    return
-      "\(info.origin.airportCode) → \(info.destination.airportCode) \(remaining)"
+    let route = [info.origin.airportCode, info.destination.airportCode]
+      .filter { !$0.isEmpty }
+      .joined(separator: " → ")
+
+    return [
+      route.isEmpty ? info.callSign : route,
+      info.timeRemaining?.formatted(hoursMinutes),
+    ]
+    .compactMap { $0 }
+    .filter { !$0.isEmpty }
+    .joined(separator: " ")
   }
 }
 
@@ -117,18 +125,19 @@ private struct FlightPanel: View {
       Text(verbatim: info.callSign)
         .font(.system(size: 18, weight: .bold, design: .rounded))
 
-      Text(verbatim: "\(info.aircraftModel) · \(info.tailNumber)")
+      Text(verbatim: equipment)
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
 
       Spacer()
 
-      Text(verbatim: info.statusPhase)
-        .font(.system(size: 11, weight: .semibold))
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .glassCapsule(tint: accent)
-
+      if !info.statusPhase.isEmpty {
+        Text(verbatim: info.statusPhase)
+          .font(.system(size: 11, weight: .semibold))
+          .padding(.horizontal, 10)
+          .padding(.vertical, 4)
+          .glassCapsule(tint: accent)
+      }
     }
   }
 
@@ -160,19 +169,26 @@ private struct FlightPanel: View {
         .foregroundStyle(.tertiary)
         .textCase(.uppercase)
 
-      Text(verbatim: info.timeRemaining.formatted(hoursMinutes))
+      Text(verbatim: info.timeRemaining?.formatted(hoursMinutes) ?? "—")
         .font(.system(size: 34, weight: .bold, design: .rounded))
         .monospacedDigit()
         .contentTransition(.numericText())
         .animation(.snappy, value: info.timeRemaining)
 
       HStack(spacing: 5) {
-        Text(verbatim: "Arrives \(info.destination.estimated.formatted(clock))")
-          .foregroundStyle(.secondary)
+        if let arrival = info.destination.current {
+          Text(verbatim: "Arrives \(arrival.formatted(clock))")
+            .foregroundStyle(.secondary)
+        }
 
-        if info.arrivalDelay > .zero {
-          Text(verbatim: "· \(info.arrivalDelay.formatted(hoursMinutes)) late")
+        if let delay = info.arrivalDelay, delay > .zero {
+          Text(verbatim: "· \(delay.formatted(hoursMinutes)) late")
             .foregroundStyle(.orange)
+        } else if let delay = info.arrivalDelay, delay < .zero {
+          let early = Duration.zero - delay
+
+          Text(verbatim: "· \(early.formatted(hoursMinutes)) early")
+            .foregroundStyle(.green)
         }
       }
       .font(.system(size: 13, weight: .medium))
@@ -192,7 +208,7 @@ private struct FlightPanel: View {
         endpoint(info.origin, showing: departure, alignment: .leading)
         Spacer(minLength: 12)
         endpoint(
-          info.destination, showing: info.destination.estimated,
+          info.destination, showing: info.destination.current,
           alignment: .trailing)
       }
     }
@@ -228,16 +244,18 @@ private struct FlightPanel: View {
   }
 
   private func endpoint(
-    _ endpoint: FlightInfo.Endpoint, showing instant: FlightInfo.Instant,
+    _ endpoint: FlightInfo.Endpoint, showing instant: FlightInfo.Instant?,
     alignment: HorizontalAlignment
   ) -> some View {
     VStack(alignment: alignment, spacing: 1) {
       HStack(spacing: 5) {
-        Text(verbatim: instant.formatted(clock))
+        Text(verbatim: instant?.formatted(clock) ?? "—")
           .font(.system(size: 14, weight: .semibold).monospacedDigit())
 
-        if instant.date != endpoint.scheduled.date {
-          Text(verbatim: endpoint.scheduled.formatted(clock))
+        if let instant, let scheduled = endpoint.scheduled,
+          instant.date != scheduled.date
+        {
+          Text(verbatim: scheduled.formatted(clock))
             .font(.system(size: 11).monospacedDigit())
             .foregroundStyle(.tertiary)
             .strikethrough()
@@ -295,16 +313,24 @@ private struct FlightPanel: View {
       }
       .frame(width: 46, height: 46)
 
-      Text(
-        verbatim:
-          "\(info.windDirection) \(rounded(info.windSpeed, usage: .general))"
-      )
-      .font(.system(size: 12, weight: .semibold, design: .rounded))
-      .monospacedDigit()
-      .lineLimit(1)
-      .minimumScaleFactor(0.7)
+      Text(verbatim: wind)
+        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
     }
     .frame(width: 84)
+  }
+
+  private var wind: String {
+    let speed = rounded(info.windSpeed, usage: .general)
+    let isSilent = info.windSpeed.map { $0.value == 0 } ?? true
+
+    guard !info.windDirection.isEmpty else {
+      return isSilent ? "N/A" : speed
+    }
+
+    return "\(info.windDirection) \(speed)"
   }
 
   private func tile(_ label: String, _ value: String) -> some View {
@@ -325,7 +351,13 @@ private struct FlightPanel: View {
   }
 
   private var accent: Color {
-    info.arrivalDelay > .zero ? .orange : .accentColor
+    (info.arrivalDelay ?? .zero) > .zero ? .orange : .accentColor
+  }
+
+  private var equipment: String {
+    [info.aircraftModel, info.tailNumber]
+      .filter { !$0.isEmpty }
+      .joined(separator: " · ")
   }
 
   private var altitude: Measurement<UnitLength>? {
@@ -334,8 +366,8 @@ private struct FlightPanel: View {
       : info.altitude?.converted(to: .feet)
   }
 
-  private var departure: FlightInfo.Instant {
-    info.origin.actual ?? info.origin.scheduled
+  private var departure: FlightInfo.Instant? {
+    info.origin.current
   }
 
   private func place(_ endpoint: FlightInfo.Endpoint) -> String {
@@ -356,9 +388,9 @@ extension FlightInfo.Instant {
 private func rounded<UnitType: Dimension>(
   _ value: Measurement<UnitType>?, usage: MeasurementFormatUnitUsage<UnitType>
 ) -> String {
-    guard let value else {
-        return "N/A"
-    }
+  guard let value else {
+    return "N/A"
+  }
 
   return value.formatted(
     .measurement(
