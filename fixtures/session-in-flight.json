@@ -1,0 +1,148 @@
+{
+    "isPortalInitialized": true,
+    "flightOffersInternetService": true,
+    "internetConnectionIsAvailable": true,
+    "isPDEServiceAvailable": true,
+    "devicePlatform": "Other",
+    "host": "www.unitedwifi.com",
+    "IsLoggedIn": true,
+    "isSubscriptionAvailable": true,
+    "VendorCode": "VIASAT",
+    "VendorName": "Viasat",
+    "CoverageMessage": "",
+    "ShowCoverageArea": false,
+    "PurchaseActive": false,
+    "internet": {
+        "accessType": "FULL",
+        "tier": "",
+        "tierDescription": "Wi-Fi with Streaming",
+        "fulfilmentState": "ACTIVE",
+        "orderState": "ACTIVE",
+        "timeRemaining": 0
+    },
+    "flifo": {
+        "actualArrivalTimeLocal": "01 Jan 0001 12:00 AM",
+        "actualDepartureTime": "1:50 p.m.",
+        "actualDepartureTimeLocal": "06 Sep 2026 1:50 PM",
+        "airSpeedKPH": "0",
+        "airSpeedMPH": "0",
+        "airTemperatureC": "-23",
+        "airTemperatureF": "-9",
+        "aircraftModel": "",
+        "altitudeFt": "24103",
+        "altitudeMeters": "7346",
+        "arrivalConcourse": "",
+        "arrivalGate": "75B",
+        "arrivalTerminal": "Terminal 7",
+        "departureConcourse": " Concourse F",
+        "departureGate": "F12",
+        "departureTerminal": "Terminal 3",
+        "destinationAirportCode": "LAX",
+        "destinationCity": "",
+        "destinationState": "",
+        "equipmentCode": "",
+        "estimatedArrivalTime": "3:40 p.m.",
+        "estimatedArrivalTimeLocal": "06 Sep 2026 3:40 PM",
+        "estimatedDepartureTimeLocal": "06 Sep 2026 1:56 PM",
+        "flightDurationMinutes": 0,
+        "flightGuid": "0407d881-8956-6035-3297-ea5f0a0c54b5",
+        "flightMapPath": "/portal/images/map/TabletLandscape.png?1788731221",
+        "flightNumber": "2610",
+        "flightStatus": "Arrived Gate 15 Minutes Early",
+        "groundSpeedKPH": "769",
+        "groundSpeedMPH": "478",
+        "isFake": false,
+        "noseNumber": "7258",
+        "originAirportCode": "SFO",
+        "originCity": "",
+        "originState": "",
+        "scheduledArrivalTime": "3:35 p.m.",
+        "scheduledArrivalTimeLocal": "06 Sep 2026 3:35 PM",
+        "scheduledDepartureTime": "1:56 p.m.",
+        "scheduledDepartureTimeLocal": "06 Sep 2026 1:56 PM",
+        "tailNumber": "N27258",
+        "timeRemainingToDestination": 41,
+        "windDirection": "NA"
+    },
+    "weather": {
+        "currently": {
+            "code": "12",
+            "currtempc": 22,
+            "currtempf": 72,
+            "day": "Sun",
+            "hightempc": 22,
+            "hightempf": 72,
+            "lowtempc": 22,
+            "lowtempf": 72,
+            "text": "Rain"
+        },
+        "forecast": [
+            {
+                "code": 30,
+                "day": "Mon",
+                "hightempc": 29,
+                "hightempf": 85,
+                "lowtempc": 24,
+                "lowtempf": 75,
+                "text": "Partly Cloudy"
+            },
+            {
+                "code": 30,
+                "day": "Tue",
+                "hightempc": 31,
+                "hightempf": 87,
+                "lowtempc": 24,
+                "lowtempf": 75,
+                "text": "AM Clouds/PM Sun"
+            },
+            {
+                "code": 30,
+                "day": "Wed",
+                "hightempc": 31,
+                "hightempf": 88,
+                "lowtempc": 24,
+                "lowtempf": 75,
+                "text": "Partly Cloudy"
+            },
+            {
+                "code": 32,
+                "day": "Thu",
+                "hightempc": 30,
+                "hightempf": 86,
+                "lowtempc": 23,
+                "lowtempf": 73,
+                "text": "Sunny"
+            },
+            {
+                "code": 34,
+                "day": "Fri",
+                "hightempc": 29,
+                "hightempf": 83,
+                "lowtempc": 22,
+                "lowtempf": 71,
+                "text": "Mostly Sunny"
+            },
+            "lastitem"
+        ]
+    },
+    "deviceCAS": 3,
+    "version": "3.8.7",
+    "metaData": {
+        "tags": [
+            "switchable"
+        ],
+        "properties": {
+            "Channel": "Portal",
+            "Content-Type": "Protobuf",
+            "FramedIp": "",
+            "IpAddress": "172.19.1.186",
+            "IsDeviceHasActiveTimedProductOfSameAccessPlan": "false",
+            "Mac": "",
+            "TransactionId": "b2579643-f44a-499a-aecb-1104f5ba3315",
+            "UserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+            "vendor": "VIASAT",
+            "vendorName": "Viasat",
+            "version": "3.8.7"
+        }
+    }
+}

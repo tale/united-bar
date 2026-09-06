@@ -57,9 +57,15 @@ extension FlightInfo {
     return min(max(flown / total, 0), 1)
   }
 
-  // United gives status as "<Phase> - <Description>" so we can probably split.
+  // United usually gives "<Phase> - <Description>" but sometimes it can be bad
   var statusPhase: String {
-    status.components(separatedBy: " - ").first ?? status
+    guard let separator = status.range(of: " - ") else {
+      let punctuality =
+        /\s+(On Time|(\d+ Hours? )?(\d+ Minutes? )?(Early|Late))$/
+      return status.replacing(punctuality, with: "")
+    }
+
+    return String(status[..<separator.lowerBound])
   }
 
   var windBearing: Double? {
