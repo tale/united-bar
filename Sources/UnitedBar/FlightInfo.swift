@@ -5,6 +5,8 @@ struct FlightInfo {
   let flightNumber: String
   let status: String
   let isFake: Bool
+  let flightGuid: String
+  let mapPath: String
 
   let aircraftModel: String
   let equipmentCode: String
@@ -101,10 +103,12 @@ extension FlightInfo: Decodable {
   init(from decoder: Decoder) throws {
     let flifo = try Flifo(from: decoder)
 
-    airlineCode = flifo.airlineCode ?? ""
+    airlineCode = flifo.airlineCode ?? "UA"
     flightNumber = flifo.flightNumber ?? ""
     status = flifo.flightStatus ?? ""
     isFake = flifo.isFake ?? false
+    flightGuid = flifo.flightGuid ?? ""
+    mapPath = flifo.flightMapPath ?? ""
 
     aircraftModel = flifo.aircraftModel ?? ""
     equipmentCode = flifo.equipmentCode ?? ""
@@ -141,7 +145,10 @@ extension FlightInfo: Decodable {
     altitude = measurement(flifo.altitudeFt, .feet)
     airTemperature = measurement(flifo.airTemperatureC, .celsius)
     windSpeed = measurement(flifo.windSpeedMPH, .milesPerHour)
-    windDirection = flifo.windDirection ?? ""
+
+    let bearing = flifo.windDirection ?? ""
+    windDirection =
+      bearing.caseInsensitiveCompare("NA") == .orderedSame ? "" : bearing
   }
 }
 
@@ -166,6 +173,8 @@ private struct Flifo: Decodable {
   let estimatedArrivalTimeLocal: String?
   let estimatedDepartureTimeLocal: String?
   let flightDurationMinutes: Minutes?
+  let flightGuid: String?
+  let flightMapPath: String?
   let flightNumber: String?
   let flightStatus: String?
   let groundSpeedMPH: String?
@@ -188,12 +197,28 @@ extension FlightInfo.Instant {
     Date.ISO8601FormatStyle(includingFractionalSeconds: true),
   ]
 
+  private static let portal = Date.ParseStrategy(
+    format: """
+      \(day: .twoDigits) \(month: .abbreviated) \(year: .defaultDigits) \
+      \(hour: .defaultDigits(clock: .twelveHour, hourCycle: .oneBased)):\
+      \(minute: .twoDigits) \(dayPeriod: .standard(.abbreviated))
+      """,
+    locale: Locale(identifier: "en_US_POSIX"),
+    timeZone: .gmt)
+
   fileprivate init?(_ text: String?) {
-    guard let text, !text.isEmpty,
-      let date = Self.iso8601.lazy.compactMap({ try? $0.parse(text) }).first
+    guard let text, !text.isEmpty else { return nil }
+
+    if let date = Self.iso8601.lazy.compactMap({ try? $0.parse(text) }).first {
+      self.init(date: date, timeZone: TimeZone(iso8601Offset: text))
+      return
+    }
+
+    guard let date = try? Self.portal.parse(text),
+      date > Date(timeIntervalSince1970: 0)
     else { return nil }
 
-    self.init(date: date, timeZone: TimeZone(iso8601Offset: text))
+    self.init(date: date, timeZone: .gmt)
   }
 }
 

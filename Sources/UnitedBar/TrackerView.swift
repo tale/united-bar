@@ -11,6 +11,10 @@ struct MenuBarLabel: View {
       if let info = store.info {
         Text(verbatim: summary(for: info))
       }
+
+      if store.wifi?.isAvailable == false {
+        Image(systemName: "wifi.slash")
+      }
     }
     .task { store.startPolling() }
   }
@@ -45,7 +49,9 @@ struct TrackerView: View {
   @ViewBuilder
   private var content: some View {
     if let info = store.info {
-      FlightPanel(info: info, aircraftImageData: store.aircraftImageData)
+      FlightPanel(
+        info: info, wifi: store.wifi,
+        aircraftImageData: store.aircraftImageData)
     } else if let errorText = store.errorText {
       placeholder {
         Image(systemName: "antenna.radiowaves.left.and.right.slash")
@@ -109,6 +115,7 @@ struct TrackerView: View {
 
 private struct FlightPanel: View {
   let info: FlightInfo
+  let wifi: SessionData.Wifi?
   let aircraftImageData: Data?
 
   var body: some View {
@@ -117,7 +124,38 @@ private struct FlightPanel: View {
       countdown
       route
       telemetry.padding(.top, 8)
+      connectivity
     }
+  }
+
+  @ViewBuilder
+  private var connectivity: some View {
+    if let wifi {
+      HStack(alignment: .center, spacing: 16) {
+        Grid(horizontalSpacing: 14, verticalSpacing: 11) {
+          GridRow {
+            tile("Wi-Fi", wifi.vendorName.isEmpty ? "N/A" : wifi.vendorName)
+            tile("Plan", plan(wifi))
+          }
+        }
+
+        Image(systemName: wifi.connection.glyph)
+          .font(.system(size: 20, weight: .medium))
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(wifi.connection.tint)
+          .help(wifi.connection.summary)
+      }
+      .padding(.vertical, 12)
+      .padding(.horizontal, 14)
+      .glassPanel()
+    }
+  }
+
+  private func plan(_ wifi: SessionData.Wifi) -> String {
+    guard let access = wifi.access else { return "N/A" }
+
+    return [access.tierSummary, access.tier, access.type]
+      .first { !$0.isEmpty } ?? "N/A"
   }
 
   private var identity: some View {
@@ -390,6 +428,35 @@ extension FlightInfo.Instant {
     var local = style
     local.timeZone = timeZone
     return date.formatted(local)
+  }
+}
+
+extension SessionData.Wifi.Connection {
+  fileprivate var summary: String {
+    switch self {
+    case .unavailable: "Not on this flight"
+    case .offline: "Offline"
+    case .signIn: "Sign in"
+    case .purchase: "Purchase"
+    case .connected: "Connected"
+    }
+  }
+
+  fileprivate var glyph: String {
+    switch self {
+    case .unavailable, .offline: "wifi.slash"
+    case .signIn: "person.crop.circle.badge.exclamationmark"
+    case .purchase: "creditcard"
+    case .connected: "wifi"
+    }
+  }
+
+  fileprivate var tint: Color {
+    switch self {
+    case .unavailable, .offline: .secondary
+    case .signIn, .purchase: .orange
+    case .connected: .green
+    }
   }
 }
 

@@ -6,6 +6,8 @@ import Observation
 @Observable
 final class FlightStore {
   private(set) var info: FlightInfo?
+  private(set) var wifi: SessionData.Wifi?
+  private(set) var weather: SessionData.Weather?
   private(set) var aircraftImageData: Data?
   private(set) var errorText: String?
   private(set) var isLoading = false
@@ -15,7 +17,7 @@ final class FlightStore {
   private var failureCount = 0
 
   private static let endpoint = URL(
-    string: "https://www.unitedwifi.com/api/flight/portal/v1/flifo")!
+    string: "https://www.unitedwifi.com/portal/r/getAllSessionData")!
   private static let cruiseInterval = Duration.seconds(60)
   private static let landingInterval = Duration.seconds(5)
   private static let retryInterval = Duration.seconds(2)
@@ -60,8 +62,12 @@ final class FlightStore {
     defer { isLoading = false }
 
     do {
-      let fetched = try await fetchInfo()
+      let session = try await fetchSession()
+      let fetched = session.flight
+
       info = fetched
+      wifi = session.wifi
+      weather = session.weather
       fetchedDatetime = Date()
       errorText = nil
       failureCount = 0
@@ -76,7 +82,8 @@ final class FlightStore {
         \(fetched.origin.airportCode, privacy: .public)→\
         \(fetched.destination.airportCode, privacy: .public) \
         \(fetched.equipmentCode, privacy: .public) \
-        \(remaining, privacy: .public) remaining
+        \(remaining, privacy: .public) remaining, \
+        wifi \(session.wifi.isAvailable ? "up" : "down", privacy: .public)
         """)
 
       await loadAircraftImage(for: fetched)
@@ -138,24 +145,24 @@ final class FlightStore {
     return data
   }
 
-  private func fetchInfo() async throws -> FlightInfo {
+  private func fetchSession() async throws -> SessionData {
     var request = URLRequest(url: Self.endpoint)
     request.setValue("application/json", forHTTPHeaderField: "Accept")
 
     let (data, response) = try await Self.session.data(for: request)
 
     // On the ground the endpoint redirects to United's in-flight marketing page
-    // which returns a 200 but with HTML, so we need to treat it as an error
+    // which returns a 200 but with HTML
     guard let http = response as? HTTPURLResponse,
       http.statusCode == 200,
       let contentType = http.value(forHTTPHeaderField: "Content-Type"),
-      contentType.localizedCaseInsensitiveContains("json")
+      !contentType.localizedCaseInsensitiveContains("html")
     else {
       throw FetchError.unavailable
     }
 
-    let decoded = try JSONDecoder().decode(FlightInfo.self, from: data)
-    if decoded.flightNumber.isEmpty {
+    let decoded = try JSONDecoder().decode(SessionData.self, from: data)
+    if decoded.flight.flightNumber.isEmpty {
       throw FetchError.illegalData
     }
 
