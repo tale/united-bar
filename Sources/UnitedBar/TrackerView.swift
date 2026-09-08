@@ -6,7 +6,7 @@ struct MenuBarLabel: View {
 
   var body: some View {
     HStack(spacing: 8) {
-      Image(systemName: "airplane")
+      marker
 
       if let info = store.info {
         Text(verbatim: summary(for: info))
@@ -17,6 +17,17 @@ struct MenuBarLabel: View {
       }
     }
     .task { store.startPolling() }
+  }
+
+  // SF Symbols has no slashed airplane, so borrow the slash the others use.
+  private var marker: some View {
+    ZStack {
+      Image(systemName: "airplane")
+
+      if store.failure != nil {
+        Image(systemName: "line.diagonal")
+      }
+    }
   }
 
   private func summary(for info: FlightInfo) -> String {
@@ -52,17 +63,17 @@ struct TrackerView: View {
       FlightPanel(
         info: info, wifi: store.wifi,
         aircraftImageData: store.aircraftImageData)
-    } else if let errorText = store.errorText {
+    } else if let failure = store.failure {
       placeholder {
-        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+        icon(failure)
           .font(.system(size: 26, weight: .medium))
           .symbolRenderingMode(.hierarchical)
           .foregroundStyle(.secondary)
 
-        Text(verbatim: "No flight data")
+        Text(verbatim: failure.title)
           .font(.system(size: 15, weight: .semibold, design: .rounded))
 
-        Text(verbatim: errorText)
+        Text(verbatim: failure.detail)
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
           .multilineTextAlignment(.center)
@@ -76,6 +87,20 @@ struct TrackerView: View {
           .font(.system(size: 12))
           .foregroundStyle(.secondary)
       }
+    }
+  }
+
+  @ViewBuilder
+  private func icon(_ failure: FlightStore.Failure) -> some View {
+    switch failure {
+    case .notConnected:
+      ZStack {
+        Image(systemName: "airplane")
+        Image(systemName: "line.diagonal")
+      }
+    case .noFlight: Image(systemName: "airplane.departure")
+    case .unreadable: Image(systemName: "exclamationmark.triangle")
+    case .offline: Image(systemName: "network.slash")
     }
   }
 
@@ -456,6 +481,29 @@ extension SessionData.Wifi.Connection {
     case .unavailable, .offline: .secondary
     case .signIn, .purchase: .orange
     case .connected: .green
+    }
+  }
+}
+
+extension FlightStore.Failure {
+  fileprivate var title: String {
+    switch self {
+    case .notConnected: "Not on a flight"
+    case .noFlight: "No flight yet"
+    case .unreadable: "Unexpected portal data"
+    case .offline: "Can't reach the portal"
+    }
+  }
+
+  fileprivate var detail: String {
+    switch self {
+    case .notConnected:
+      "Join Unitedwifi.com on board and this fills in on its own."
+    case .noFlight:
+      "The portal is up but hasn't published a flight for this aircraft."
+    case .unreadable:
+      "The portal answered with something this build can't read. Check the log."
+    case .offline(let reason): reason
     }
   }
 }

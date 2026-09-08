@@ -9,7 +9,7 @@ final class FlightStore {
   private(set) var wifi: SessionData.Wifi?
   private(set) var weather: SessionData.Weather?
   private(set) var aircraftImageData: Data?
-  private(set) var errorText: String?
+  private(set) var failure: Failure?
   private(set) var isLoading = false
   private(set) var fetchedDatetime: Date?
   private var pollTask: Task<Void, Never>?
@@ -69,7 +69,7 @@ final class FlightStore {
       wifi = session.wifi
       weather = session.weather
       fetchedDatetime = Date()
-      errorText = nil
+      failure = nil
       failureCount = 0
 
       let remaining =
@@ -89,12 +89,11 @@ final class FlightStore {
       await loadAircraftImage(for: fetched)
     } catch {
       failureCount = min(failureCount + 1, 6)
-      errorText =
-        (error as? DecodingError).map { "Unexpected payload: \($0)" }
-        ?? error.localizedDescription
+      failure = Failure(error)
 
+      let reason = String(describing: error)
       Logger.flight.error(
-        "flifo failed: \(error.localizedDescription, privacy: .public)")
+        "session failed: \(reason, privacy: .public)")
     }
   }
 
@@ -169,6 +168,32 @@ final class FlightStore {
     return decoded
   }
 
+  enum Failure {
+    case notConnected
+    case noFlight
+    case unreadable
+    case offline(String)
+
+    init(_ error: Error) {
+      if let fetch = error as? FetchError {
+        switch fetch {
+        case .unavailable: self = .notConnected
+        case .illegalData: self = .noFlight
+        case .notAnImage: self = .unreadable
+        }
+
+        return
+      }
+
+      if error is DecodingError {
+        self = .unreadable
+        return
+      }
+
+      self = .offline(error.localizedDescription)
+    }
+  }
+
   enum FetchError: LocalizedError {
     case unavailable
     case illegalData
@@ -176,10 +201,9 @@ final class FlightStore {
 
     var errorDescription: String? {
       switch self {
-      case .unavailable: "Flight data is unavailable. Connect to Unitedwifi.com"
-      case .illegalData:
-        "Invalid flight data recieved, this aircraft may be experiencing connectivity issues."
-      case .notAnImage: "The portal served something that isn't an image"
+      case .unavailable: "the portal redirected us off the aircraft network"
+      case .illegalData: "the portal published no flight"
+      case .notAnImage: "the portal served something that isn't an image"
       }
     }
   }
